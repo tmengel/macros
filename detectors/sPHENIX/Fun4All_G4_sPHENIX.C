@@ -21,6 +21,7 @@
 #include <G4_User.C>
 #include <QA.C>
 
+#include <phpythia8/PHPy8JetTrigger.h>
 #include <fun4all/Fun4AllDstOutputManager.h>
 #include <fun4all/Fun4AllOutputManager.h>
 #include <fun4all/Fun4AllServer.h>
@@ -28,13 +29,17 @@
 #include <phool/PHRandomSeed.h>
 #include <phool/recoConsts.h>
 
+//#include <kfparticle_sphenix/KFParticle_sPHENIX.h>
+//#include <decayfinder/DecayFinder.h>
+//
+//R__LOAD_LIBRARY(libkfparticle_sphenix.so)
 R__LOAD_LIBRARY(libfun4all.so)
 
 // For HepMC Hijing
 // try inputFile = /sphenix/sim/sim01/sphnxpro/sHijing_HepMC/sHijing_0-12fm.dat
 
 int Fun4All_G4_sPHENIX(
-    const int nEvents = 1,
+    const int nEvents = 5,
     const string &inputFile = "https://www.phenix.bnl.gov/WWW/publish/phnxbld/sPHENIX/files/sPHENIX_G4Hits_sHijing_9-11fm_00000_00010.root",
     const string &outputFile = "G4sPHENIX.root",
     const string &embed_input_file = "https://www.phenix.bnl.gov/WWW/publish/phnxbld/sPHENIX/files/sPHENIX_G4Hits_sHijing_9-11fm_00000_00010.root",
@@ -42,7 +47,7 @@ int Fun4All_G4_sPHENIX(
     const string &outdir = ".")
 {
   Fun4AllServer *se = Fun4AllServer::instance();
-  se->Verbosity(0);
+  se->Verbosity(2);
 
   //Opt to print all random seed used for debugging reproducibility. Comment out to reduce stdout prints.
   PHRandomSeed::Verbosity(1);
@@ -66,7 +71,6 @@ int Fun4All_G4_sPHENIX(
   rc->set_StringFlag("XPLOAD_TAG","example_tag_1");
   // database
   rc->set_StringFlag("XPLOAD_CONFIG","test");
-
 
   //===============
   // Input options
@@ -93,20 +97,21 @@ int Fun4All_G4_sPHENIX(
   // if you use a filelist
   //INPUTEMBED::listfile[0] = embed_input_file;
 
-  Input::SIMPLE = true;
-  Input::SIMPLE_NUMBER = 2; // if you need 2 of them
+  Input::SIMPLE = false;
+  //Input::SIMPLE_NUMBER = 2; // if you need 2 of them
   // Input::SIMPLE_VERBOSITY = 1;
 
   //  Input::PYTHIA6 = true;
 
-  // Input::PYTHIA8 = true;
+   Input::PYTHIA8 = true;
+   PYTHIA8::config_file = "./phpythia8_charm_jet.cfg";
 
   //  Input::GUN = true;
   //  Input::GUN_NUMBER = 3; // if you need 3 of them
   // Input::GUN_VERBOSITY = 1;
 
   //D0 generator
-  //Input::DZERO = false;
+  Input::DZERO = false;
   //Input::DZERO_VERBOSITY = 0;
   //Lambda_c generator //Not ready yet
   //Input::LAMBDAC = false;
@@ -177,7 +182,7 @@ int Fun4All_G4_sPHENIX(
     INPUTGENERATOR::VectorMesonGenerator[0]->set_pt_range(0., 10.);
     // Y species - select only one, last one wins
     INPUTGENERATOR::VectorMesonGenerator[0]->set_upsilon_1s();
-    if (Input::HEPMC || Input::EMBED)
+    if (Input::HEPMC || Input::EMBED || Input::PYTHIA8)
     {
       INPUTGENERATOR::VectorMesonGenerator[0]->set_reuse_existing_vertex(true);
       INPUTGENERATOR::VectorMesonGenerator[0]->set_existing_vertex_offset_vector(0.0, 0.0, 0.0);
@@ -201,6 +206,14 @@ int Fun4All_G4_sPHENIX(
   // pythia8
   if (Input::PYTHIA8)
   {
+    PHPy8JetTrigger *theTrigger = new PHPy8JetTrigger();
+    //      theTrigger->Verbosity(10);
+    theTrigger->SetEtaHighLow(-.7, .7);
+    theTrigger->SetJetR(.4);
+    theTrigger->SetMinJetPt(20);
+    INPUTGENERATOR::Pythia8->register_trigger(theTrigger);
+
+
     //! apply sPHENIX nominal beam parameter with 2mrad crossing as defined in sPH-TRG-2020-001
     Input::ApplysPHENIXBeamParameter(INPUTGENERATOR::Pythia8);
   }
@@ -240,6 +253,17 @@ int Fun4All_G4_sPHENIX(
   }
   // register all input generators with Fun4All
   InputRegister();
+  // pythia8
+  if (Input::PYTHIA8)
+  {
+    DecayFinder *D0Finder = new DecayFinder("DecayFinder_D0");
+    D0Finder->setDecayDescriptor("[D0 -> K^- pi^+]cc");
+    D0Finder->saveDST(false);
+    D0Finder->allowPi0(true);
+    D0Finder->allowPhotons(true);
+    D0Finder->triggerOnDecay(true);
+    se->registerSubsystem(D0Finder);
+  }
 
   // set up production relatedstuff
   //   Enable::PRODUCTION = true;
@@ -353,16 +377,16 @@ int Fun4All_G4_sPHENIX(
 
   Enable::GLOBAL_RECO = true;
   //Enable::GLOBAL_FASTSIM = true;
-  //Enable::KFPARTICLE = true;
+  Enable::KFPARTICLE = true;
   //Enable::KFPARTICLE_VERBOSITY = 1;
-  //Enable::KFPARTICLE_TRUTH_MATCH = true;
+  Enable::KFPARTICLE_TRUTH_MATCH = true;
   //Enable::KFPARTICLE_SAVE_NTUPLE = true;
 
-  Enable::CALOTRIGGER = Enable::CEMC_TOWER && Enable::HCALIN_TOWER && Enable::HCALOUT_TOWER && false;
+  Enable::CALOTRIGGER = Enable::CEMC_TOWER && Enable::HCALIN_TOWER && Enable::HCALOUT_TOWER && true;
 
-  Enable::JETS = false;
-  Enable::JETS_EVAL = Enable::JETS && true;
-  Enable::JETS_QA = Enable::JETS && Enable::QA && true;
+  Enable::JETS = true;
+//  Enable::JETS_EVAL = Enable::JETS && true;
+  Enable::JETS_QA = Enable::JETS and Enable::QA && true;
 
   // HI Jet Reco for p+Au / Au+Au collisions (default is false for
   // single particle / p+p-only simulations, or for p+Au / Au+Au
@@ -543,7 +567,7 @@ int Fun4All_G4_sPHENIX(
   //======================
   // Run KFParticle on evt
   //======================
-  if (Enable::KFPARTICLE && Input::UPSILON) KFParticle_Upsilon_Reco();
+  // if (Enable::KFPARTICLE && Input::UPSILON) KFParticle_Upsilon_Reco();
   if (Enable::KFPARTICLE && Input::DZERO) KFParticle_D0_Reco();
 
   //----------------------
@@ -562,7 +586,8 @@ int Fun4All_G4_sPHENIX(
   if (Enable::MICROMEGAS_QA) Micromegas_QA();
   if (Enable::TRACKING_QA) Tracking_QA();
 
-  if (Enable::TRACKING_QA && Enable::CEMC_QA && Enable::HCALIN_QA && Enable::HCALOUT_QA) QA_G4CaloTracking();
+  if (Enable::TRACKING_QA and Enable::CEMC_QA and Enable::HCALIN_QA and Enable::HCALOUT_QA) QA_G4CaloTracking();
+  if (Enable::KFPARTICLE)  KFParticle_QA();
 
   //--------------
   // Set up Input Managers
@@ -619,7 +644,7 @@ int Fun4All_G4_sPHENIX(
   }
 
   se->skip(skip);
-  se->run(nEvents);
+  se->run(nEvents, true);
 
   //-----
   // QA output
