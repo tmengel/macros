@@ -42,6 +42,7 @@ PHG4Reco *DisplayOn(const char *mac = "vis.mac")
   g4->ApplyDisplayAction();
   sprintf(cmd, "/control/execute %s", mac);
   g4->ApplyCommand(cmd);
+  // g4->export_geometry(1);
   return g4;
 }
 // print out the commands I always forget

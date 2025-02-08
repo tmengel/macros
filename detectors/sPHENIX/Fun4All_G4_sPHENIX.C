@@ -288,8 +288,8 @@ int Fun4All_G4_sPHENIX(
   //  Enable::DSTREADER = true;
 
   // turn the display on (default off)
-   //Enable::DISPLAY = true;
-
+   Enable::DISPLAY = true;
+  
   //======================
   // What to run
   //======================
@@ -305,44 +305,44 @@ int Fun4All_G4_sPHENIX(
   // Enable::MBD = true;
   // Enable::MBD_SUPPORT = true; // save hist in MBD/BBC support structure
   // Enable::MBDRECO = Enable::MBD && true;
-  Enable::MBDFAKE = true;  // Smeared vtx and t0, use if you don't want real MBD/BBC in simulation
+  // Enable::MBDFAKE = true;  // Smeared vtx and t0, use if you don't want real MBD/BBC in simulation
 
-  Enable::PIPE = true;
-  Enable::PIPE_ABSORBER = true;
+  // Enable::PIPE = true;
+  // Enable::PIPE_ABSORBER = true;
 
   // central tracking
-  Enable::MVTX = true;
-  Enable::MVTX_CELL = Enable::MVTX && true;
-  Enable::MVTX_CLUSTER = Enable::MVTX_CELL && true;
-  Enable::MVTX_QA = Enable::MVTX_CLUSTER && Enable::QA && true;
+  // Enable::MVTX = true;
+  // Enable::MVTX_CELL = Enable::MVTX && true;
+  // Enable::MVTX_CLUSTER = Enable::MVTX_CELL && true;
+  // Enable::MVTX_QA = Enable::MVTX_CLUSTER && Enable::QA && true;
 
-  Enable::INTT = true;
+  // Enable::INTT = true;
 //  Enable::INTT_ABSORBER = true; // enables layerwise support structure readout
 //  Enable::INTT_SUPPORT = true; // enable global support structure readout
-  Enable::INTT_CELL = Enable::INTT && true;
-  Enable::INTT_CLUSTER = Enable::INTT_CELL && true;
-  Enable::INTT_QA = Enable::INTT_CLUSTER && Enable::QA && true;
+  // Enable::INTT_CELL = Enable::INTT && true;
+  // Enable::INTT_CLUSTER = Enable::INTT_CELL && true;
+  // Enable::INTT_QA = Enable::INTT_CLUSTER && Enable::QA && true;
 
-  Enable::TPC = true;
-  Enable::TPC_ABSORBER = true;
-  Enable::TPC_CELL = Enable::TPC && true;
-  Enable::TPC_CLUSTER = Enable::TPC_CELL && true;
-  Enable::TPC_QA = Enable::TPC_CLUSTER && Enable::QA && true;
+  // Enable::TPC = true;
+  // Enable::TPC_ABSORBER = true;
+  // Enable::TPC_CELL = Enable::TPC && true;
+  // Enable::TPC_CLUSTER = Enable::TPC_CELL && true;
+  // Enable::TPC_QA = Enable::TPC_CLUSTER && Enable::QA && true;
 
-  Enable::MICROMEGAS = true;
-  Enable::MICROMEGAS_CELL = Enable::MICROMEGAS && true;
-  Enable::MICROMEGAS_CLUSTER = Enable::MICROMEGAS_CELL && true;
-  Enable::MICROMEGAS_QA = Enable::MICROMEGAS_CLUSTER && Enable::QA && true;
+  // Enable::MICROMEGAS = true;
+  // Enable::MICROMEGAS_CELL = Enable::MICROMEGAS && true;
+  // Enable::MICROMEGAS_CLUSTER = Enable::MICROMEGAS_CELL && true;
+  // Enable::MICROMEGAS_QA = Enable::MICROMEGAS_CLUSTER && Enable::QA && true;
 
-  Enable::TRACKING_TRACK = (Enable::MICROMEGAS_CLUSTER && Enable::TPC_CLUSTER && Enable::INTT_CLUSTER && Enable::MVTX_CLUSTER) && true;
-  Enable::GLOBAL_RECO = (Enable::MBDFAKE || Enable::MBDRECO || Enable::TRACKING_TRACK) && true;
-  Enable::TRACKING_EVAL = Enable::TRACKING_TRACK && Enable::GLOBAL_RECO && true;
-  Enable::TRACKING_QA = Enable::TRACKING_TRACK && Enable::QA && true;
+  // Enable::TRACKING_TRACK = (Enable::MICROMEGAS_CLUSTER && Enable::TPC_CLUSTER && Enable::INTT_CLUSTER && Enable::MVTX_CLUSTER) && true;
+  // Enable::GLOBAL_RECO = (Enable::MBDFAKE || Enable::MBDRECO || Enable::TRACKING_TRACK) && true;
+  // Enable::TRACKING_EVAL = Enable::TRACKING_TRACK && Enable::GLOBAL_RECO && true;
+  // Enable::TRACKING_QA = Enable::TRACKING_TRACK && Enable::QA && true;
 
-  // only do track matching if TRACKINGTRACK is also used
-  Enable::TRACK_MATCHING = Enable::TRACKING_TRACK && false;
-  Enable::TRACK_MATCHING_TREE = Enable::TRACK_MATCHING && false;
-  Enable::TRACK_MATCHING_TREE_CLUSTERS = Enable::TRACK_MATCHING_TREE && false;
+  // // only do track matching if TRACKINGTRACK is also used
+  // Enable::TRACK_MATCHING = Enable::TRACKING_TRACK && false;
+  // Enable::TRACK_MATCHING_TREE = Enable::TRACK_MATCHING && false;
+  // Enable::TRACK_MATCHING_TREE_CLUSTERS = Enable::TRACK_MATCHING_TREE && false;
 
   //Additional tracking tools
   //Enable::TRACKING_DIAGNOSTICS = Enable::TRACKING_TRACK && true;
@@ -364,48 +364,48 @@ int Fun4All_G4_sPHENIX(
   //  into the tracking, cannot run together with CEMC
   //  Enable::CEMCALBEDO = true;
 
-  Enable::CEMC = true;
-  Enable::CEMC_ABSORBER = true;
-  Enable::CEMC_CELL = Enable::CEMC && true;
-  Enable::CEMC_TOWER = Enable::CEMC_CELL && true;
-  Enable::CEMC_CLUSTER = Enable::CEMC_TOWER && true;
-  Enable::CEMC_EVAL = Enable::CEMC_G4Hit && Enable::CEMC_CLUSTER && true;
-  Enable::CEMC_QA = Enable::CEMC_CLUSTER && Enable::QA && true;
+  // Enable::CEMC = true;
+  // Enable::CEMC_ABSORBER = true;
+  // Enable::CEMC_CELL = Enable::CEMC && true;
+  // Enable::CEMC_TOWER = Enable::CEMC_CELL && true;
+  // Enable::CEMC_CLUSTER = Enable::CEMC_TOWER && true;
+  // Enable::CEMC_EVAL = Enable::CEMC_G4Hit && Enable::CEMC_CLUSTER && true;
+  // Enable::CEMC_QA = Enable::CEMC_CLUSTER && Enable::QA && true;
 
-  Enable::HCALIN = true;
-  Enable::HCALIN_ABSORBER = true;
-  Enable::HCALIN_CELL = Enable::HCALIN && true;
-  Enable::HCALIN_TOWER = Enable::HCALIN_CELL && true;
-  Enable::HCALIN_CLUSTER = Enable::HCALIN_TOWER && true;
-  Enable::HCALIN_EVAL = Enable::HCALIN_G4Hit && Enable::HCALIN_CLUSTER && true;
-  Enable::HCALIN_QA = Enable::HCALIN_CLUSTER && Enable::QA && true;
+  // Enable::HCALIN = true;
+  // Enable::HCALIN_ABSORBER = true;
+  // Enable::HCALIN_CELL = Enable::HCALIN && true;
+  // Enable::HCALIN_TOWER = Enable::HCALIN_CELL && true;
+  // Enable::HCALIN_CLUSTER = Enable::HCALIN_TOWER && true;
+  // Enable::HCALIN_EVAL = Enable::HCALIN_G4Hit && Enable::HCALIN_CLUSTER && true;
+  // Enable::HCALIN_QA = Enable::HCALIN_CLUSTER && Enable::QA && true;
 
   Enable::MAGNET = true;
-  Enable::MAGNET_ABSORBER = true;
+  // Enable::MAGNET_ABSORBER = true;
 
-  Enable::HCALOUT = true;
-  Enable::HCALOUT_ABSORBER = true;
-  Enable::HCALOUT_CELL = Enable::HCALOUT && true;
-  Enable::HCALOUT_TOWER = Enable::HCALOUT_CELL && true;
-  Enable::HCALOUT_CLUSTER = Enable::HCALOUT_TOWER && true;
-  Enable::HCALOUT_EVAL = Enable::HCALOUT_G4Hit && Enable::HCALOUT_CLUSTER && true;
-  Enable::HCALOUT_QA = Enable::HCALOUT_CLUSTER && Enable::QA && true;
+  //Enable::HCALOUT = true;
+  // Enable::HCALOUT_ABSORBER = true;
+  //Enable::HCALOUT_CELL = Enable::HCALOUT && true;
+  //Enable::HCALOUT_TOWER = Enable::HCALOUT_CELL && true;
+  //Enable::HCALOUT_CLUSTER = Enable::HCALOUT_TOWER && true;
+//Enable::HCALOUT_EVAL = Enable::HCALOUT_G4Hit && Enable::HCALOUT_CLUSTER && true;
+  //Enable::HCALOUT_QA = Enable::HCALOUT_CLUSTER && Enable::QA && true;
 
-  Enable::EPD = true;
-  Enable::EPD_TILE = Enable::EPD && true;
+  // Enable::EPD = true;
+  // Enable::EPD_TILE = Enable::EPD && true;
 
-  Enable::BEAMLINE = true;
-  //  Enable::BEAMLINE_ABSORBER = true;  // makes the beam line magnets sensitive volumes
-  //  Enable::BEAMLINE_BLACKHOLE = true; // turns the beamline magnets into black holes
-  Enable::ZDC = true;
-  //  Enable::ZDC_ABSORBER = true;
-  //  Enable::ZDC_SUPPORT = true;
-  Enable::ZDC_TOWER = Enable::ZDC && true;
-  Enable::ZDC_EVAL = Enable::ZDC_TOWER && true;
+  // Enable::BEAMLINE = true;
+  // //  Enable::BEAMLINE_ABSORBER = true;  // makes the beam line magnets sensitive volumes
+  // //  Enable::BEAMLINE_BLACKHOLE = true; // turns the beamline magnets into black holes
+  // Enable::ZDC = true;
+  // //  Enable::ZDC_ABSORBER = true;
+  // //  Enable::ZDC_SUPPORT = true;
+  // Enable::ZDC_TOWER = Enable::ZDC && true;
+  // Enable::ZDC_EVAL = Enable::ZDC_TOWER && true;
 
   //! forward flux return plug door. Out of acceptance and off by default.
-  //Enable::PLUGDOOR = true;
-  Enable::PLUGDOOR_ABSORBER = true;
+  // Enable::PLUGDOOR = true;
+  // Enable::PLUGDOOR_ABSORBER = true;
 
  //Enable::GLOBAL_FASTSIM = true;
 
@@ -436,7 +436,7 @@ int Fun4All_G4_sPHENIX(
   Enable::BLACKHOLE = true;
   //Enable::BLACKHOLE_SAVEHITS = false; // turn off saving of bh hits
   //Enable::BLACKHOLE_FORWARD_SAVEHITS = false; // disable forward/backward hits
-  //BlackHoleGeometry::visible = true;
+  // BlackHoleGeometry::visible = true;
 
   // run user provided code (from local G4_User.C)
   //Enable::USER = true;
@@ -459,9 +459,9 @@ int Fun4All_G4_sPHENIX(
   // Magnet Settings
   //---------------
 
-  //  G4MAGNET::magfield =  string(getenv("CALIBRATIONROOT"))+ string("/Field/Map/sphenix3dbigmapxyz.root");  // default map from the calibration database
-  //  G4MAGNET::magfield = "1.5"; // alternatively to specify a constant magnetic field, give a float number, which will be translated to solenoidal field in T, if string use as fieldmap name (including path)
-//  G4MAGNET::magfield_rescale = 1.;  // make consistent with expected Babar field strength of 1.4T
+   G4MAGNET::magfield =  string(getenv("CALIBRATIONROOT"))+ string("/Field/Map/sphenix3dbigmapxyz.root");  // default map from the calibration database
+   G4MAGNET::magfield = "1.5"; // alternatively to specify a constant magnetic field, give a float number, which will be translated to solenoidal field in T, if string use as fieldmap name (including path)
+   G4MAGNET::magfield_rescale = 1.;  // make consistent with expected Babar field strength of 1.4T
 
   //---------------
   // Pythia Decayer
@@ -698,7 +698,7 @@ int Fun4All_G4_sPHENIX(
 
     gROOT->ProcessLine("Fun4AllServer *se = Fun4AllServer::instance();");
     gROOT->ProcessLine("PHG4Reco *g4 = (PHG4Reco *) se->getSubsysReco(\"PHG4RECO\");");
-
+    gROOT->ProcessLine("g4->export_geometry(1,\"sPHENIXGeo.root\");");
     cout << "-------------------------------------------------" << endl;
     cout << "You are in event display mode. Run one event with" << endl;
     cout << "se->run(1)" << endl;
