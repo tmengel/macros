@@ -17,6 +17,9 @@
 #include <jetbackground/SubtractTowersCS.h>
 #include <jetbackground/TowerRho.h>
 
+#include <jetbackground/SubtractTowersRho.h>
+#include <jetbackground/DetermineTowerBackgroundv2.h>
+
 #include <jetbase/FastJetOptions.h>
 #include <jetbase/JetReco.h>
 #include <jetbase/TowerJetInput.h>
@@ -48,6 +51,10 @@ namespace Enable
   bool HIJETS_TOWER = true;   ///< make tower jets
   bool HIJETS_TRACK = false;  ///< make track jets
   bool HIJETS_PFLOW = false;  ///< make particle flow jets
+
+  bool HIJETS_TOWER_V2 = false; ///< use new tower subtraction method (v2)
+  bool HIJETS_TOWERRHO = false; ///< calculate tower rho and do area subtraction for towers
+
 }  // namespace Enable
 
 // ----------------------------------------------------------------------------
@@ -60,6 +67,13 @@ namespace HIJETS
   // do_flow = 2 --psi2 derived from HIJING
   // do_flow = 3 --psi2 derived from sEPD
   int do_flow = 0;
+
+  // version 2
+  bool use_newsub = false; // use new subtraction method (v2) for jet reconstruction
+  int calov2_mode = DetermineTowerBackgroundv2::FlowMode::NoFlow;
+  int psi2_mode   = DetermineTowerBackgroundv2::Psi2Mode::NoPsi2;
+  int nSeeds      = 2;
+  
 
   ///! do constituent subtraction
   bool do_CS = false;
@@ -233,6 +247,114 @@ void MakeHITowerJets()
   // dtb->set_towerinfo(true);
   dtb->Verbosity(verbosity);
   dtb->set_towerNodePrefix(HIJETS::tower_prefix);
+  se->registerSubsystem(dtb);
+
+  CopyAndSubtractJets *casj = new CopyAndSubtractJets();
+  casj->SetFlowModulation(HIJETS::do_flow);
+  casj->Verbosity(verbosity);
+  casj->set_towerinfo(true);
+  casj->set_towerNodePrefix(HIJETS::tower_prefix);
+  se->registerSubsystem(casj);
+
+  DetermineTowerBackground *dtb2 = new DetermineTowerBackground();
+  dtb2->SetBackgroundOutputName("TowerInfoBackground_Sub2");
+  dtb2->SetFlow(HIJETS::do_flow);
+  dtb2->SetSeedType(1);
+  dtb2->SetSeedJetPt(7);
+  dtb2->Verbosity(verbosity);
+  // dtb2->set_towerinfo(true);
+  dtb2->set_towerNodePrefix(HIJETS::tower_prefix);
+  se->registerSubsystem(dtb2);
+
+  SubtractTowers *st = new SubtractTowers();
+  st->SetFlowModulation(HIJETS::do_flow);
+  st->Verbosity(verbosity);
+  st->set_towerinfo(true);
+  st->set_towerNodePrefix(HIJETS::tower_prefix);
+  se->registerSubsystem(st);
+
+  towerjetreco = new JetReco();
+  incemc = new TowerJetInput(Jet::CEMC_TOWERINFO_SUB1, HIJETS::tower_prefix);
+  inihcal = new TowerJetInput(Jet::HCALIN_TOWERINFO_SUB1, HIJETS::tower_prefix);
+  inohcal = new TowerJetInput(Jet::HCALOUT_TOWERINFO_SUB1, HIJETS::tower_prefix);
+  if (HIJETS::do_vertex_type)
+  {
+    incemc->set_GlobalVertexType(HIJETS::vertex_type);
+    inihcal->set_GlobalVertexType(HIJETS::vertex_type);
+    inohcal->set_GlobalVertexType(HIJETS::vertex_type);
+  }
+  towerjetreco->add_input(incemc);
+  towerjetreco->add_input(inihcal);
+  towerjetreco->add_input(inohcal);
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.2), HIJETS::algo_prefix + "_Tower_r02_Sub1");
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.3), HIJETS::algo_prefix + "_Tower_r03_Sub1");
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.4), HIJETS::algo_prefix + "_Tower_r04_Sub1");
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.5), HIJETS::algo_prefix + "_Tower_r05_Sub1");
+  towerjetreco->set_algo_node(HIJETS::jet_node);
+  towerjetreco->set_input_node("TOWER");
+  towerjetreco->Verbosity(verbosity);
+  se->registerSubsystem(towerjetreco);
+
+  return;
+}
+
+void MakeHITowerJetsv2()
+{
+  int verbosity = std::max(Enable::VERBOSITY, Enable::HIJETS_VERBOSITY);
+
+  //---------------
+  // Fun4All server
+  //---------------
+  Fun4AllServer *se = Fun4AllServer::instance();
+
+  if ( HIJETS::psi2_mode == DetermineTowerBackgroundv2::Psi2Mode::sEPD )
+  {
+    EventPlaneReco *epreco = new EventPlaneReco();
+    se->registerSubsystem(epreco);
+  }
+
+  RetowerCEMC *rcemc = new RetowerCEMC();
+  rcemc->Verbosity(verbosity);
+  rcemc->set_towerinfo(true);
+  rcemc->set_frac_cut(0.5);  // fraction of retower that must be masked to mask the full retower
+  rcemc->set_towerNodePrefix(HIJETS::tower_prefix);
+  se->registerSubsystem(rcemc);
+
+  JetReco *towerjetreco = new JetReco();
+  TowerJetInput *incemc = new TowerJetInput(Jet::CEMC_TOWERINFO_RETOWER, HIJETS::tower_prefix);
+  TowerJetInput *inihcal = new TowerJetInput(Jet::HCALIN_TOWERINFO, HIJETS::tower_prefix);
+  TowerJetInput *inohcal = new TowerJetInput(Jet::HCALOUT_TOWERINFO, HIJETS::tower_prefix);
+  if (HIJETS::do_vertex_type)
+  {
+    incemc->set_GlobalVertexType(HIJETS::vertex_type);
+    inihcal->set_GlobalVertexType(HIJETS::vertex_type);
+    inohcal->set_GlobalVertexType(HIJETS::vertex_type);
+  }
+  towerjetreco->add_input(incemc);
+  towerjetreco->add_input(inihcal);
+  towerjetreco->add_input(inohcal);
+  // these are KT jets
+  FastJetOptions fj_opts( {Jet::KT, 0.4, 0} );
+  // towerjetreco->add_algo(HIJETS::GetFJAlgo(0.2), HIJETS::algo_prefix + "_TowerInfo_HIRecoSeedsRaw_r02");
+  towerjetreco->add_algo( new FastJetAlgoSub( fj_opts ) , "kT_TowerInfo_HIRecoSeedsRaw_r02" );
+  towerjetreco->set_algo_node(HIJETS::jet_node);
+  towerjetreco->set_input_node("TOWER");
+  towerjetreco->Verbosity(verbosity);
+  se->registerSubsystem(towerjetreco);
+
+  DetermineTowerBackground *dtb = new DetermineTowerBackground();
+  dtb -> SetBackgroundOutputName("TowerInfoBackground_Sub1");
+  dtb -> SetIHCAL_TowerInfoNode( "TOWERINFO_CALIB_HCALIN" );
+  dtb -> SetOHCAL_TowerInfoNode( "TOWERINFO_CALIB_HCALOUT" );
+  dtb -> SetCEMC_RetowerInfoNode( "TOWERINFO_CALIB_CEMC_RETOWER" );
+  dtb -> SetSeedJetName( "kT_TowerInfo_HIRecoSeedsRaw_r02" );
+  dtb -> SetSeedType( 0 );
+  dtb -> SetSeedJetPt( 5.0 );
+  dtb -> SetNOmitSeeds( HIJETS::nSeeds );
+  dtb -> SetFlowMode( HIJETS::calov2_mode );
+  dtb -> SetPsi2Mode( HIJETS::psi2_mode );
+  dtb->SetSeedJetD(3);
+  dtb->Verbosity(verbosity);
   se->registerSubsystem(dtb);
 
   CopyAndSubtractJets *casj = new CopyAndSubtractJets();
