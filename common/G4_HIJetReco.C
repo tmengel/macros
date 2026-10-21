@@ -10,10 +10,14 @@
 
 #include <jetbackground/CopyAndSubtractJets.h>
 #include <jetbackground/DetermineTowerBackground.h>
+#include <jetbackground/DetermineTowerRho.h>
 #include <jetbackground/FastJetAlgoSub.h>
 #include <jetbackground/RetowerCEMC.h>
 #include <jetbackground/SubtractTowers.h>
 #include <jetbackground/SubtractTowersCS.h>
+#include <jetbackground/TowerRho.h>
+#include <jetbackground/TowerRhoToBackground.h>
+#include <jetbackground/TowerRhov1.h>
 
 #include <eventplaneinfo/Eventplaneinfo.h>
 #include <eventplaneinfo/EventPlaneReco.h>
@@ -39,6 +43,21 @@ namespace G4HIJETS
   // do_flow = 3 --psi2 derived from sEPD
   int do_flow = 0;
   bool do_CS = false;
+
+  // also make jets from rho-subtracted towers:
+  //   DetermineTowerRho (one per layer) -> TowerRhoToBackground -> SubtractTowers
+  // subtracted towers go to <rho_sub_prefix>_*_SUB1, jets to AntiKt_Tower_r0X_RhoSub
+  bool do_rho_sub = false;
+  TowerRho::Method rho_sub_method = TowerRho::Method::MULT;
+  std::string rho_sub_prefix = "TOWERINFO_RHOSUB";
+  // optional eta-shape calibration: CDB tag or direct path (path wins); empty = none
+  std::string rho_sub_eta_calib_tag = "";
+  std::string rho_sub_eta_calib_path = "";
+  // UE model of that calibration: affine (default) or multiplicative
+  bool rho_sub_affine = true;
+  // tower shape map (s-map) for the rho seed jets: a CDB tag or a direct path; both empty = off
+  std::string rho_sub_tower_shape_tag = "";
+  std::string rho_sub_tower_shape_path = "";
 }  // namespace G4HIJETS
 
 void HIJetReco()
@@ -133,6 +152,71 @@ void HIJetReco()
   towerjetreco->set_input_node("TOWER");
   towerjetreco->Verbosity(verbosity);
   se->registerSubsystem(towerjetreco);
+
+  if (G4HIJETS::do_rho_sub)
+  {
+    const std::string method = TowerRhov1::get_method_string(G4HIJETS::rho_sub_method);
+    const std::vector<std::pair<Jet::SRC, std::string>> layers = {
+        {Jet::CEMC_TOWERINFO_RETOWER, "CEMC"},
+        {Jet::HCALIN_TOWERINFO, "HCALIN"},
+        {Jet::HCALOUT_TOWERINFO, "HCALOUT"}};
+    std::vector<std::string> rho_nodes;
+    for (const auto &[src, layer] : layers)
+    {
+      rho_nodes.push_back("TowerRho_" + layer + "_" + method);
+      DetermineTowerRho *rhoCalc = new DetermineTowerRho("DetermineTowerRho_" + layer);
+      rhoCalc->add_method(G4HIJETS::rho_sub_method, rho_nodes.back());
+      rhoCalc->add_input(new TowerJetInput(src));
+      if (!G4HIJETS::rho_sub_tower_shape_tag.empty())
+      {
+        rhoCalc->set_tower_shape_cdb_tag(G4HIJETS::rho_sub_tower_shape_tag);
+      }
+      if (!G4HIJETS::rho_sub_tower_shape_path.empty())
+      {
+        rhoCalc->set_tower_shape_path(G4HIJETS::rho_sub_tower_shape_path);
+      }
+      rhoCalc->Verbosity(verbosity);
+      se->registerSubsystem(rhoCalc);
+    }
+
+    TowerRhoToBackground *rho2bkg = new TowerRhoToBackground();
+    rho2bkg->set_emcal_rho_node(rho_nodes[0]);
+    rho2bkg->set_ihcal_rho_node(rho_nodes[1]);
+    rho2bkg->set_ohcal_rho_node(rho_nodes[2]);
+    rho2bkg->set_background_node("TowerInfoBackground_RhoSub");
+    if (!G4HIJETS::rho_sub_eta_calib_tag.empty())
+    {
+      rho2bkg->set_eta_calib_cdb_tag(G4HIJETS::rho_sub_eta_calib_tag);
+    }
+    if (!G4HIJETS::rho_sub_eta_calib_path.empty())
+    {
+      rho2bkg->set_eta_calib_path(G4HIJETS::rho_sub_eta_calib_path);
+    }
+    rho2bkg->set_calib_model(G4HIJETS::rho_sub_affine ? TowerRhoToBackground::CalibModel::AFFINE : TowerRhoToBackground::CalibModel::MULTIPLICATIVE);
+    rho2bkg->Verbosity(verbosity);
+    se->registerSubsystem(rho2bkg);
+
+    SubtractTowers *strho = new SubtractTowers("SubtractTowers_RhoSub");
+    strho->set_inputTowerBackgroundNode("TowerInfoBackground_RhoSub");
+    strho->set_emcal_output_node(G4HIJETS::rho_sub_prefix + "_CEMC_RETOWER_SUB1");
+    strho->set_ihcal_output_node(G4HIJETS::rho_sub_prefix + "_HCALIN_SUB1");
+    strho->set_ohcal_output_node(G4HIJETS::rho_sub_prefix + "_HCALOUT_SUB1");
+    strho->Verbosity(verbosity);
+    se->registerSubsystem(strho);
+
+    JetReco *towerjetrecoRho = new JetReco("TowerJetReco_RhoSub");
+    towerjetrecoRho->add_input(new TowerJetInput(Jet::CEMC_TOWERINFO_SUB1, G4HIJETS::rho_sub_prefix));
+    towerjetrecoRho->add_input(new TowerJetInput(Jet::HCALIN_TOWERINFO_SUB1, G4HIJETS::rho_sub_prefix));
+    towerjetrecoRho->add_input(new TowerJetInput(Jet::HCALOUT_TOWERINFO_SUB1, G4HIJETS::rho_sub_prefix));
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.2, verbosity), "AntiKt_Tower_r02_RhoSub");
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.3, verbosity), "AntiKt_Tower_r03_RhoSub");
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.4, verbosity), "AntiKt_Tower_r04_RhoSub");
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.5, verbosity), "AntiKt_Tower_r05_RhoSub");
+    towerjetrecoRho->set_algo_node("ANTIKT");
+    towerjetrecoRho->set_input_node("TOWER");
+    towerjetrecoRho->Verbosity(verbosity);
+    se->registerSubsystem(towerjetrecoRho);
+  }
 
   if (G4HIJETS::do_CS)
   {
