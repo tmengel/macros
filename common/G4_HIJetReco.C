@@ -10,10 +10,14 @@
 
 #include <jetbackground/CopyAndSubtractJets.h>
 #include <jetbackground/DetermineTowerBackground.h>
+#include <jetbackground/DetermineTowerRho.h>
 #include <jetbackground/FastJetAlgoSub.h>
 #include <jetbackground/RetowerCEMC.h>
 #include <jetbackground/SubtractTowers.h>
 #include <jetbackground/SubtractTowersCS.h>
+#include <jetbackground/TowerRho.h>
+#include <jetbackground/TowerRhoToBackground.h>
+#include <jetbackground/TowerRhov1.h>
 
 #include <eventplaneinfo/Eventplaneinfo.h>
 #include <eventplaneinfo/EventPlaneReco.h>
@@ -39,6 +43,51 @@ namespace G4HIJETS
   // do_flow = 3 --psi2 derived from sEPD
   int do_flow = 0;
   bool do_CS = false;
+
+  // also make jets from rho-subtracted towers:
+  //   DetermineTowerRho (one per layer) -> TowerRhoToBackground -> SubtractTowers
+  // subtracted towers go to <rho_sub_prefix>_*_SUB1, jets to AntiKt_Tower_r0X_RhoSub
+  bool do_rho_sub = false;
+  TowerRho::Method rho_sub_method = TowerRho::Method::MULT;
+  std::string rho_sub_prefix = "TOWERINFO_RHOSUB";
+  ///! UE model of the rho subtraction: AFFINE (UE = alpha x + beta per tower, with
+  ///! x = rho cosh(eta); default), MULTIPLICATIVE (w x) or NONE (uncalibrated, UE = x)
+  enum class RhoSubModel
+  {
+    AFFINE,
+    MULTIPLICATIVE,
+    NONE
+  };
+  RhoSubModel rho_sub_model = RhoSubModel::AFFINE;
+
+  ///! eta-shape calibration payload of the UE model (CDBHistos: w, alpha, beta per layer,
+  ///! eta strip, vertex z and Q'): a CDB tag, or a direct file path (wins if set)
+  std::string rho_sub_eta_calib_tag = "JET_RHO_UE_CALIB";
+  std::string rho_sub_eta_calib_path = "";
+
+  ///! tower shape map (s-map) for the seed jets of the per-layer rho ("seed only"), on by
+  ///! default; the eta-shape calibration must be made with the same setting. Payload: a CDB
+  ///! tag, or a direct file path (wins if set)
+  bool rho_sub_tower_shape = true;
+  std::string rho_sub_tower_shape_tag = "JET_RHO_TOWER_SHAPE";
+  std::string rho_sub_tower_shape_path = "";
+
+  ///! MBD charge knee Q_knee of the run, the scale of Q' = (q_S + q_N) / Q_knee in both payloads:
+  ///! a per-run CDBTTree payload. With the payloads from the CDB it comes from the CDB tag; with
+  ///! payloads from file paths from the payloads' own per-run table, unless a path is set here
+  ///! (one payload, or a directory of mbdq_knee_<run>.root). A run without a knee falls back to
+  ///! the payloads' table, then to the dataset default (median knee of the calibration runs)
+  std::string rho_sub_knee_tag = "JET_RHO_MBDQ_KNEE";
+  std::string rho_sub_knee_path = "";
+
+  ///! SubtractTowers (both subtractions): scale the EMCal UE of a retowered tower by its live
+  ///! fraction (1 - dead, from RetowerCEMC), renormalized per eta ring, so a partly dead tower
+  ///! no longer loses a full tower of UE; on by default (set false for the old behavior)
+  bool ue_live_fraction = true;
+
+  ///! seed jet acceptance of the per-layer rho: < 0 = the tower eta range shrunk by R
+  ///! (default), else |eta_jet| < value (the calibration must be made with the same setting)
+  float rho_sub_seed_abs_eta = -1;
 }  // namespace G4HIJETS
 
 void HIJetReco()
@@ -116,6 +165,7 @@ void HIJetReco()
   
 
   SubtractTowers *st = new SubtractTowers();
+  st->set_ue_live_fraction(G4HIJETS::ue_live_fraction);
   st->SetFlowModulation(G4HIJETS::do_flow);
   st->Verbosity(verbosity);
   st->set_towerinfo(true);
@@ -133,6 +183,100 @@ void HIJetReco()
   towerjetreco->set_input_node("TOWER");
   towerjetreco->Verbosity(verbosity);
   se->registerSubsystem(towerjetreco);
+
+  if (G4HIJETS::do_rho_sub)
+  {
+    const std::string method = TowerRhov1::get_method_string(G4HIJETS::rho_sub_method);
+    const std::vector<std::pair<Jet::SRC, std::string>> layers = {
+        {Jet::CEMC_TOWERINFO_RETOWER, "CEMC"},
+        {Jet::HCALIN_TOWERINFO, "HCALIN"},
+        {Jet::HCALOUT_TOWERINFO, "HCALOUT"}};
+    std::vector<std::string> rho_nodes;
+    for (const auto &[src, layer] : layers)
+    {
+      rho_nodes.push_back("TowerRho_" + layer + "_" + method);
+      DetermineTowerRho *rhoCalc = new DetermineTowerRho("DetermineTowerRho_" + layer);
+      rhoCalc->add_method(G4HIJETS::rho_sub_method, rho_nodes.back());
+      rhoCalc->add_input(new TowerJetInput(src));
+      // tower shape map for the seed jets, and the seed acceptance
+      if (G4HIJETS::rho_sub_tower_shape)
+      {
+        if (!G4HIJETS::rho_sub_tower_shape_path.empty())
+        {
+          rhoCalc->set_tower_shape_path(G4HIJETS::rho_sub_tower_shape_path);
+        }
+        else
+        {
+          rhoCalc->set_tower_shape_cdb_tag(G4HIJETS::rho_sub_tower_shape_tag);
+        }
+        if (!G4HIJETS::rho_sub_knee_path.empty())
+        {
+          rhoCalc->set_mbd_knee_path(G4HIJETS::rho_sub_knee_path);
+        }
+        else if (G4HIJETS::rho_sub_tower_shape_path.empty())
+        {
+          rhoCalc->set_mbd_knee_cdb_tag(G4HIJETS::rho_sub_knee_tag);
+        }
+      }
+      if (G4HIJETS::rho_sub_seed_abs_eta >= 0)
+      {
+        rhoCalc->set_jet_abs_eta(G4HIJETS::rho_sub_seed_abs_eta);
+      }
+      rhoCalc->Verbosity(verbosity);
+      se->registerSubsystem(rhoCalc);
+    }
+
+    TowerRhoToBackground *rho2bkg = new TowerRhoToBackground();
+    rho2bkg->set_emcal_rho_node(rho_nodes[0]);
+    rho2bkg->set_ihcal_rho_node(rho_nodes[1]);
+    rho2bkg->set_ohcal_rho_node(rho_nodes[2]);
+    rho2bkg->set_background_node("TowerInfoBackground_RhoSub");
+    // UE model: calibrated (affine or multiplicative) from the payload, or uncalibrated
+    if (G4HIJETS::rho_sub_model != G4HIJETS::RhoSubModel::NONE)
+    {
+      if (!G4HIJETS::rho_sub_eta_calib_path.empty())
+      {
+        rho2bkg->set_eta_calib_path(G4HIJETS::rho_sub_eta_calib_path);
+      }
+      else
+      {
+        rho2bkg->set_eta_calib_cdb_tag(G4HIJETS::rho_sub_eta_calib_tag);
+      }
+      if (!G4HIJETS::rho_sub_knee_path.empty())
+      {
+        rho2bkg->set_mbd_knee_path(G4HIJETS::rho_sub_knee_path);
+      }
+      else if (G4HIJETS::rho_sub_eta_calib_path.empty())
+      {
+        rho2bkg->set_mbd_knee_cdb_tag(G4HIJETS::rho_sub_knee_tag);
+      }
+      rho2bkg->set_calib_model(G4HIJETS::rho_sub_model == G4HIJETS::RhoSubModel::AFFINE ? TowerRhoToBackground::CalibModel::AFFINE : TowerRhoToBackground::CalibModel::MULTIPLICATIVE);
+    }
+    rho2bkg->Verbosity(verbosity);
+    se->registerSubsystem(rho2bkg);
+
+    SubtractTowers *strho = new SubtractTowers("SubtractTowers_RhoSub");
+    strho->set_ue_live_fraction(G4HIJETS::ue_live_fraction);
+    strho->set_inputTowerBackgroundNode("TowerInfoBackground_RhoSub");
+    strho->set_emcal_output_node(G4HIJETS::rho_sub_prefix + "_CEMC_RETOWER_SUB1");
+    strho->set_ihcal_output_node(G4HIJETS::rho_sub_prefix + "_HCALIN_SUB1");
+    strho->set_ohcal_output_node(G4HIJETS::rho_sub_prefix + "_HCALOUT_SUB1");
+    strho->Verbosity(verbosity);
+    se->registerSubsystem(strho);
+
+    JetReco *towerjetrecoRho = new JetReco("TowerJetReco_RhoSub");
+    towerjetrecoRho->add_input(new TowerJetInput(Jet::CEMC_TOWERINFO_SUB1, G4HIJETS::rho_sub_prefix));
+    towerjetrecoRho->add_input(new TowerJetInput(Jet::HCALIN_TOWERINFO_SUB1, G4HIJETS::rho_sub_prefix));
+    towerjetrecoRho->add_input(new TowerJetInput(Jet::HCALOUT_TOWERINFO_SUB1, G4HIJETS::rho_sub_prefix));
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.2, verbosity), "AntiKt_Tower_r02_RhoSub");
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.3, verbosity), "AntiKt_Tower_r03_RhoSub");
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.4, verbosity), "AntiKt_Tower_r04_RhoSub");
+    towerjetrecoRho->add_algo(new FastJetAlgoSub(Jet::ANTIKT, 0.5, verbosity), "AntiKt_Tower_r05_RhoSub");
+    towerjetrecoRho->set_algo_node("ANTIKT");
+    towerjetrecoRho->set_input_node("TOWER");
+    towerjetrecoRho->Verbosity(verbosity);
+    se->registerSubsystem(towerjetrecoRho);
+  }
 
   if (G4HIJETS::do_CS)
   {

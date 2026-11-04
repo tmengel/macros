@@ -16,6 +16,8 @@
 #include <jetbackground/SubtractTowers.h>
 #include <jetbackground/SubtractTowersCS.h>
 #include <jetbackground/TowerRho.h>
+#include <jetbackground/TowerRhoToBackground.h>
+#include <jetbackground/TowerRhov1.h>
 
 #include <jetbase/FastJetOptions.h>
 #include <jetbase/JetReco.h>
@@ -89,6 +91,70 @@ namespace HIJETS
 
   ///! sets prefix of nodes to store jets
   std::string algo_prefix = "AntiKt";
+
+  ///! also make jets from rho-subtracted towers (requires Enable::HIJETS_TOWER):
+  ///!   DetermineTowerRho (one per layer) -> TowerRhoToBackground -> SubtractTowers
+  ///! The subtracted towers are written to <rho_sub_prefix>_CEMC_RETOWER_SUB1,
+  ///! <rho_sub_prefix>_HCALIN_SUB1 and <rho_sub_prefix>_HCALOUT_SUB1, and the jets
+  ///! to <algo_prefix>_Tower_r0X_RhoSub
+  bool do_rho_sub = false;
+
+  ///! rho method used for the subtraction (TowerRho::Method::MULT or AREA)
+  TowerRho::Method rho_sub_method = TowerRho::Method::MULT;
+
+  ///! prefix of the rho-subtracted tower nodes
+  std::string rho_sub_prefix = "TOWERINFO_RHOSUB";
+
+  ///! UE model of the rho subtraction: AFFINE (UE = alpha x + beta per tower, with
+  ///! x = rho cosh(eta); default), MULTIPLICATIVE (w x) or NONE (uncalibrated, UE = x)
+  enum class RhoSubModel
+  {
+    AFFINE,
+    MULTIPLICATIVE,
+    NONE
+  };
+  RhoSubModel rho_sub_model = RhoSubModel::AFFINE;
+
+  ///! eta-shape calibration payload of the UE model (CDBHistos: w, alpha, beta per layer,
+  ///! eta strip, vertex z and Q'): a CDB tag, or a direct file path (wins if set)
+  std::string rho_sub_eta_calib_tag = "JET_RHO_UE_CALIB";
+  std::string rho_sub_eta_calib_path = "";
+
+  ///! tower shape map (s-map) for the seed jets of the per-layer rho ("seed only"), on by
+  ///! default; the eta-shape calibration must be made with the same setting. Payload: a CDB
+  ///! tag, or a direct file path (wins if set)
+  bool rho_sub_tower_shape = true;
+  std::string rho_sub_tower_shape_tag = "JET_RHO_TOWER_SHAPE";
+  std::string rho_sub_tower_shape_path = "";
+
+  ///! MBD charge knee Q_knee of the run, the scale of Q' = (q_S + q_N) / Q_knee in both payloads:
+  ///! a per-run CDBTTree payload. With the payloads from the CDB it comes from the CDB tag; with
+  ///! payloads from file paths from the payloads' own per-run table, unless a path is set here
+  ///! (one payload, or a directory of mbdq_knee_<run>.root). A run without a knee falls back to
+  ///! the payloads' table, then to the dataset default (median knee of the calibration runs)
+  std::string rho_sub_knee_tag = "JET_RHO_MBDQ_KNEE";
+  std::string rho_sub_knee_path = "";
+
+  ///! SubtractTowers (both subtractions): scale the EMCal UE of a retowered tower by its live
+  ///! fraction (1 - dead, from RetowerCEMC), renormalized per eta ring, so a partly dead tower
+  ///! no longer loses a full tower of UE; on by default (set false for the old behavior)
+  bool ue_live_fraction = true;
+
+  ///! seed jet acceptance of the per-layer rho: < 0 = the tower eta range shrunk by R
+  ///! (default), else |eta_jet| < value (the calibration must be made with the same setting)
+  float rho_sub_seed_abs_eta = -1;
+
+  ///! also run the iterative subtraction with flow modulation flow_variant_mode next to the one
+  ///! of do_flow, on its own nodes (requires Enable::HIJETS_TOWER): backgrounds
+  ///! TowerInfoBackground_Sub1Flow / _Sub2Flow, seeds AntiKt_TowerInfo_HIRecoSeedsSubFlow_r02,
+  ///! towers <flow_variant_prefix>_CEMC_RETOWER_SUB1 / _HCALIN_SUB1 / _HCALOUT_SUB1 and jets
+  ///! <algo_prefix>_Tower_r0X_Sub1Flow
+  bool do_flow_variant = false;
+  int flow_variant_mode = 1;
+  std::string flow_variant_prefix = "TOWERINFO_FLOW";
+
+  ///! also make jets from the unsubtracted towers: <algo_prefix>_Tower_r0X_Raw
+  bool do_raw_jets = false;
 
   ///! sets the embedding g4 flag used to determine which particles are classified as 'truth' in MakeHITruthJets
   ///! if you don't know what this is, you probably don't need to change it
@@ -254,6 +320,7 @@ void MakeHITowerJets()
   se->registerSubsystem(dtb2);
 
   SubtractTowers *st = new SubtractTowers();
+  st->set_ue_live_fraction(HIJETS::ue_live_fraction);
   st->SetFlowModulation(HIJETS::do_flow);
   st->Verbosity(verbosity);
   st->set_towerinfo(true);
@@ -277,6 +344,247 @@ void MakeHITowerJets()
   towerjetreco->add_algo(HIJETS::GetFJAlgo(0.3), HIJETS::algo_prefix + "_Tower_r03_Sub1");
   towerjetreco->add_algo(HIJETS::GetFJAlgo(0.4), HIJETS::algo_prefix + "_Tower_r04_Sub1");
   towerjetreco->add_algo(HIJETS::GetFJAlgo(0.5), HIJETS::algo_prefix + "_Tower_r05_Sub1");
+  towerjetreco->set_algo_node(HIJETS::jet_node);
+  towerjetreco->set_input_node("TOWER");
+  towerjetreco->Verbosity(verbosity);
+  se->registerSubsystem(towerjetreco);
+
+  return;
+}
+
+// ----------------------------------------------------------------------------
+//! Iterative subtraction with flow modulation next to the one of MakeHITowerJets() (must run
+//! after it: uses its raw seed jets and the retowered EMCal), on its own nodes
+// ----------------------------------------------------------------------------
+void MakeHIFlowVariantTowerJets()
+{
+  int verbosity = std::max(Enable::VERBOSITY, Enable::HIJETS_VERBOSITY);
+  Fun4AllServer *se = Fun4AllServer::instance();
+
+  const std::string bkg1 = "TowerInfoBackground_Sub1Flow";
+  const std::string bkg2 = "TowerInfoBackground_Sub2Flow";
+  const std::string subseeds = HIJETS::algo_prefix + "_TowerInfo_HIRecoSeedsSubFlow_r02";
+
+  DetermineTowerBackground *dtb = new DetermineTowerBackground("DetermineTowerBackground_Sub1Flow");
+  dtb->SetBackgroundOutputName(bkg1);
+  dtb->SetFlow(HIJETS::flow_variant_mode);
+  dtb->SetSeedType(0);
+  dtb->SetSeedJetD(3);
+  dtb->set_jetnode(HIJETS::algo_prefix + "_TowerInfo_HIRecoSeedsRaw_r02");
+  dtb->Verbosity(verbosity);
+  dtb->set_towerNodePrefix(HIJETS::tower_prefix);
+  se->registerSubsystem(dtb);
+
+  CopyAndSubtractJets *casj = new CopyAndSubtractJets("CopyAndSubtractJets_Flow");
+  casj->SetFlowModulation(HIJETS::flow_variant_mode);
+  casj->Verbosity(verbosity);
+  casj->set_towerinfo(true);
+  casj->set_towerNodePrefix(HIJETS::tower_prefix);
+  casj->set_background_node(bkg1);
+  casj->set_subseed_node(subseeds);
+  se->registerSubsystem(casj);
+
+  DetermineTowerBackground *dtb2 = new DetermineTowerBackground("DetermineTowerBackground_Sub2Flow");
+  dtb2->SetBackgroundOutputName(bkg2);
+  dtb2->SetFlow(HIJETS::flow_variant_mode);
+  dtb2->SetSeedType(1);
+  dtb2->SetSeedJetPt(7);
+  dtb2->set_jetnode(subseeds);
+  dtb2->Verbosity(verbosity);
+  dtb2->set_towerNodePrefix(HIJETS::tower_prefix);
+  se->registerSubsystem(dtb2);
+
+  SubtractTowers *st = new SubtractTowers("SubtractTowers_Flow");
+  st->set_ue_live_fraction(HIJETS::ue_live_fraction);
+  st->SetFlowModulation(HIJETS::flow_variant_mode);
+  st->Verbosity(verbosity);
+  st->set_towerinfo(true);
+  st->set_towerNodePrefix(HIJETS::tower_prefix);
+  st->set_inputTowerBackgroundNode(bkg2);
+  st->set_emcal_output_node(HIJETS::flow_variant_prefix + "_CEMC_RETOWER_SUB1");
+  st->set_ihcal_output_node(HIJETS::flow_variant_prefix + "_HCALIN_SUB1");
+  st->set_ohcal_output_node(HIJETS::flow_variant_prefix + "_HCALOUT_SUB1");
+  se->registerSubsystem(st);
+
+  JetReco *towerjetreco = new JetReco("TowerJetReco_Sub1Flow");
+  TowerJetInput *incemc = new TowerJetInput(Jet::CEMC_TOWERINFO_SUB1, HIJETS::flow_variant_prefix);
+  TowerJetInput *inihcal = new TowerJetInput(Jet::HCALIN_TOWERINFO_SUB1, HIJETS::flow_variant_prefix);
+  TowerJetInput *inohcal = new TowerJetInput(Jet::HCALOUT_TOWERINFO_SUB1, HIJETS::flow_variant_prefix);
+  if (HIJETS::do_vertex_type)
+  {
+    incemc->set_GlobalVertexType(HIJETS::vertex_type);
+    inihcal->set_GlobalVertexType(HIJETS::vertex_type);
+    inohcal->set_GlobalVertexType(HIJETS::vertex_type);
+  }
+  towerjetreco->add_input(incemc);
+  towerjetreco->add_input(inihcal);
+  towerjetreco->add_input(inohcal);
+  for (const auto &[r, tag] : std::vector<std::pair<float, std::string>>{{0.2, "r02"}, {0.3, "r03"}, {0.4, "r04"}, {0.5, "r05"}})
+  {
+    towerjetreco->add_algo(HIJETS::GetFJAlgo(r), HIJETS::algo_prefix + "_Tower_" + tag + "_Sub1Flow");
+  }
+  towerjetreco->set_algo_node(HIJETS::jet_node);
+  towerjetreco->set_input_node("TOWER");
+  towerjetreco->Verbosity(verbosity);
+  se->registerSubsystem(towerjetreco);
+}
+
+// ----------------------------------------------------------------------------
+//! Jets from the unsubtracted towers (must run after MakeHITowerJets(): retowered EMCal)
+// ----------------------------------------------------------------------------
+void MakeHIRawTowerJets()
+{
+  int verbosity = std::max(Enable::VERBOSITY, Enable::HIJETS_VERBOSITY);
+  Fun4AllServer *se = Fun4AllServer::instance();
+
+  JetReco *towerjetreco = new JetReco("TowerJetReco_Raw");
+  TowerJetInput *incemc = new TowerJetInput(Jet::CEMC_TOWERINFO_RETOWER, HIJETS::tower_prefix);
+  TowerJetInput *inihcal = new TowerJetInput(Jet::HCALIN_TOWERINFO, HIJETS::tower_prefix);
+  TowerJetInput *inohcal = new TowerJetInput(Jet::HCALOUT_TOWERINFO, HIJETS::tower_prefix);
+  if (HIJETS::do_vertex_type)
+  {
+    incemc->set_GlobalVertexType(HIJETS::vertex_type);
+    inihcal->set_GlobalVertexType(HIJETS::vertex_type);
+    inohcal->set_GlobalVertexType(HIJETS::vertex_type);
+  }
+  towerjetreco->add_input(incemc);
+  towerjetreco->add_input(inihcal);
+  towerjetreco->add_input(inohcal);
+  for (const auto &[r, tag] : std::vector<std::pair<float, std::string>>{{0.2, "r02"}, {0.3, "r03"}, {0.4, "r04"}, {0.5, "r05"}})
+  {
+    towerjetreco->add_algo(HIJETS::GetFJAlgo(r), HIJETS::algo_prefix + "_Tower_" + tag + "_Raw");
+  }
+  towerjetreco->set_algo_node(HIJETS::jet_node);
+  towerjetreco->set_input_node("TOWER");
+  towerjetreco->Verbosity(verbosity);
+  se->registerSubsystem(towerjetreco);
+}
+
+// ----------------------------------------------------------------------------
+//! Make jets out of rho-subtracted towers. Must run after MakeHITowerJets(),
+//! which registers RetowerCEMC.
+// ----------------------------------------------------------------------------
+void MakeHIRhoSubTowerJets()
+{
+  int verbosity = std::max(Enable::VERBOSITY, Enable::HIJETS_VERBOSITY);
+
+  //---------------
+  // Fun4All server
+  //---------------
+  Fun4AllServer *se = Fun4AllServer::instance();
+
+  // rho per layer, e.g. TowerRho_CEMC_MULT (seed jets in TowerRho_CEMC_MULT_SeedJets)
+  const std::string method = TowerRhov1::get_method_string(HIJETS::rho_sub_method);
+  const std::vector<std::pair<Jet::SRC, std::string>> layers = {
+      {Jet::CEMC_TOWERINFO_RETOWER, "CEMC"},
+      {Jet::HCALIN_TOWERINFO, "HCALIN"},
+      {Jet::HCALOUT_TOWERINFO, "HCALOUT"}};
+  std::vector<std::string> rho_nodes;
+  for (const auto &[src, layer] : layers)
+  {
+    rho_nodes.push_back("TowerRho_" + layer + "_" + method);
+    DetermineTowerRho *rhoCalc = new DetermineTowerRho("DetermineTowerRho_" + layer);
+    rhoCalc->add_method(HIJETS::rho_sub_method, rho_nodes.back());
+    TowerJetInput *rho_in = new TowerJetInput(src, HIJETS::tower_prefix);
+    if (HIJETS::do_vertex_type)
+    {
+      rho_in->set_GlobalVertexType(HIJETS::vertex_type);
+    }
+    rhoCalc->add_input(rho_in);
+    // tower shape map for the seed jets, and the seed acceptance
+    if (HIJETS::rho_sub_tower_shape)
+    {
+      if (!HIJETS::rho_sub_tower_shape_path.empty())
+      {
+        rhoCalc->set_tower_shape_path(HIJETS::rho_sub_tower_shape_path);
+      }
+      else
+      {
+        rhoCalc->set_tower_shape_cdb_tag(HIJETS::rho_sub_tower_shape_tag);
+      }
+      if (!HIJETS::rho_sub_knee_path.empty())
+      {
+        rhoCalc->set_mbd_knee_path(HIJETS::rho_sub_knee_path);
+      }
+      else if (HIJETS::rho_sub_tower_shape_path.empty())
+      {
+        rhoCalc->set_mbd_knee_cdb_tag(HIJETS::rho_sub_knee_tag);
+      }
+    }
+    if (HIJETS::rho_sub_seed_abs_eta >= 0)
+    {
+      rhoCalc->set_jet_abs_eta(HIJETS::rho_sub_seed_abs_eta);
+    }
+    if (HIJETS::do_vertex_type)
+    {
+      rhoCalc->set_vertex_type(HIJETS::vertex_type);
+    }
+    rhoCalc->Verbosity(verbosity);
+    se->registerSubsystem(rhoCalc);
+  }
+
+  // turn the three rho values into a TowerBackground
+  TowerRhoToBackground *rho2bkg = new TowerRhoToBackground();
+  rho2bkg->set_emcal_rho_node(rho_nodes[0]);
+  rho2bkg->set_ihcal_rho_node(rho_nodes[1]);
+  rho2bkg->set_ohcal_rho_node(rho_nodes[2]);
+  rho2bkg->set_background_node("TowerInfoBackground_RhoSub");
+  if (HIJETS::do_vertex_type)
+  {
+    rho2bkg->set_vertex_type(HIJETS::vertex_type);
+  }
+  // UE model: calibrated (affine or multiplicative) from the payload, or uncalibrated
+  if (HIJETS::rho_sub_model != HIJETS::RhoSubModel::NONE)
+  {
+    if (!HIJETS::rho_sub_eta_calib_path.empty())
+    {
+      rho2bkg->set_eta_calib_path(HIJETS::rho_sub_eta_calib_path);
+    }
+    else
+    {
+      rho2bkg->set_eta_calib_cdb_tag(HIJETS::rho_sub_eta_calib_tag);
+    }
+    if (!HIJETS::rho_sub_knee_path.empty())
+    {
+      rho2bkg->set_mbd_knee_path(HIJETS::rho_sub_knee_path);
+    }
+    else if (HIJETS::rho_sub_eta_calib_path.empty())
+    {
+      rho2bkg->set_mbd_knee_cdb_tag(HIJETS::rho_sub_knee_tag);
+    }
+    rho2bkg->set_calib_model(HIJETS::rho_sub_model == HIJETS::RhoSubModel::AFFINE ? TowerRhoToBackground::CalibModel::AFFINE : TowerRhoToBackground::CalibModel::MULTIPLICATIVE);
+  }
+  rho2bkg->Verbosity(verbosity);
+  se->registerSubsystem(rho2bkg);
+
+  // subtract it, writing to separate nodes so the HI _SUB1 towers are untouched
+  SubtractTowers *st = new SubtractTowers("SubtractTowers_RhoSub");
+  st->set_ue_live_fraction(HIJETS::ue_live_fraction);
+  st->set_towerNodePrefix(HIJETS::tower_prefix);
+  st->set_inputTowerBackgroundNode("TowerInfoBackground_RhoSub");
+  st->set_emcal_output_node(HIJETS::rho_sub_prefix + "_CEMC_RETOWER_SUB1");
+  st->set_ihcal_output_node(HIJETS::rho_sub_prefix + "_HCALIN_SUB1");
+  st->set_ohcal_output_node(HIJETS::rho_sub_prefix + "_HCALOUT_SUB1");
+  st->Verbosity(verbosity);
+  se->registerSubsystem(st);
+
+  JetReco *towerjetreco = new JetReco("TowerJetReco_RhoSub");
+  TowerJetInput *incemc = new TowerJetInput(Jet::CEMC_TOWERINFO_SUB1, HIJETS::rho_sub_prefix);
+  TowerJetInput *inihcal = new TowerJetInput(Jet::HCALIN_TOWERINFO_SUB1, HIJETS::rho_sub_prefix);
+  TowerJetInput *inohcal = new TowerJetInput(Jet::HCALOUT_TOWERINFO_SUB1, HIJETS::rho_sub_prefix);
+  if (HIJETS::do_vertex_type)
+  {
+    incemc->set_GlobalVertexType(HIJETS::vertex_type);
+    inihcal->set_GlobalVertexType(HIJETS::vertex_type);
+    inohcal->set_GlobalVertexType(HIJETS::vertex_type);
+  }
+  towerjetreco->add_input(incemc);
+  towerjetreco->add_input(inihcal);
+  towerjetreco->add_input(inohcal);
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.2), HIJETS::algo_prefix + "_Tower_r02_RhoSub");
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.3), HIJETS::algo_prefix + "_Tower_r03_RhoSub");
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.4), HIJETS::algo_prefix + "_Tower_r04_RhoSub");
+  towerjetreco->add_algo(HIJETS::GetFJAlgo(0.5), HIJETS::algo_prefix + "_Tower_r05_RhoSub");
   towerjetreco->set_algo_node(HIJETS::jet_node);
   towerjetreco->set_input_node("TOWER");
   towerjetreco->Verbosity(verbosity);
@@ -365,6 +673,9 @@ void HIJetReco()
 
   // run approriate jet reconstruction routines
   if (Enable::HIJETS_TOWER) MakeHITowerJets();
+  if (Enable::HIJETS_TOWER && HIJETS::do_flow_variant) MakeHIFlowVariantTowerJets();
+  if (Enable::HIJETS_TOWER && HIJETS::do_raw_jets) MakeHIRawTowerJets();
+  if (Enable::HIJETS_TOWER && HIJETS::do_rho_sub) MakeHIRhoSubTowerJets();
   if (Enable::HIJETS_TRACK) MakeHITrackJets();
   if (Enable::HIJETS_PFLOW) MakeHIPFlowJets();
 }
