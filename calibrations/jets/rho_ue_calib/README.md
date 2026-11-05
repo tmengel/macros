@@ -63,8 +63,12 @@ bunches when the classifier has bunch classes; in table mode widen `set_t0_windo
 `set_bunch_class_windows(2.5, 7.5)`) into `MinimumBiasInfo` when the classifier left them unset.
 
 `Fun4All_RhoUECalib_Sim.C` runs the same steps on minimum-bias HIJING DSTs (one DST or a
-list; CDB tag `MDC2`, run 31, the simulation centrality scales of the Run 2024 Au+Au HIJING
-production); no veto (the makers' vertex cut only).
+list; CDB tag `MDC2`, run 31); no veto (the makers' vertex cut only). The minimum-bias selection
+needs the simulation centrality scales; `MDC2` run 31 has no `CentralityScale` /
+`CentralityVertexScale` payload, so pass the directory of the scales of the Run 2024 Au+Au HIJING
+production (`centrality_dir`, condor variable `centdir=`), which holds
+`scales/cdb_centrality_scale_1.root` and `vertexscales/cdb_centrality_vertex_scale_1.root`; without it
+the classifier takes the CDB payloads.
 
 Seed jet acceptance (`seed_abs_eta`, "ue"): < 0 (default) = the tower eta range shrunk by R, as
 `DetermineTowerRho` and `HIJetReco.C` (`HIJETS::rho_sub_seed_abs_eta`); 5 = every seed jet. The
@@ -93,7 +97,7 @@ nohup ./run_chain.sh $O <listdir>/todo.txt setup=<script> > $O/chain.log 2>&1 &
 UE_VARIANTS="ue: ue_alljets:seedeta=5" nohup ./run_chain.sh $O <listdir>/todo.txt > $O/chain.log 2>&1 &
 # HIJING: lists from a file list, the sim macro
 ./make_todo_files.sh hijing_dsts.list <listdir> 31
-nohup ./run_chain.sh $O <listdir>/todo.txt macro=Fun4All_RhoUECalib_Sim.C > $O/chain.log 2>&1 &
+nohup ./run_chain.sh $O <listdir>/todo.txt macro=Fun4All_RhoUECalib_Sim.C centdir=<scales dir> > $O/chain.log 2>&1 &
 ```
 
 Each job writes `$O/<step>/<step>_<run>_<segment>.root` with a `.done` or `.failed` marker,

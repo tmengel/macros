@@ -1,9 +1,10 @@
 #!/bin/bash
 # One rho UE calibration job (see rhouecalib.job):
-#   run_rhouecalib.sh <step> <input list> <output file> <cdb tag> <knee table> <s-map payload> <setup> <macro dir> <macro> <veto> <refit> <seed |eta|> <ZS list>
+#   run_rhouecalib.sh <step> <input list> <output file> <cdb tag> <knee table> <s-map payload> <setup> <macro dir> <macro> <veto> <refit> <seed |eta|> <ZS list> <centrality dir>
 # "none" = not set, "window" = the default seed acceptance (-1). <setup>: script to source for the environment (default: the "new" build).
 # <macro>: Fun4All_RhoUECalib.C (data) or Fun4All_RhoUECalib_Sim.C (HIJING; cdb tag, veto and
-# refit unused). A marker <output>.done or <output>.failed records the result.
+# refit unused; <centrality dir>: the simulation centrality scales, "none" = from the CDB). A marker
+# <output>.done or <output>.failed records the result.
 STEP=$1
 LIST=$2
 OUTFILE=$3
@@ -19,6 +20,8 @@ SEEDETA=${12:-window}
 [ "${SEEDETA}" = "window" ] && SEEDETA=-1
 ZSLIST=${13:-none}
 [ "${ZSLIST}" = "none" ] && ZSLIST=""
+CENTDIR=${14:-none}
+[ "${CENTDIR}" = "none" ] && CENTDIR=""
 [ "${KNEE}" = "none" ] && KNEE=""
 [ "${SMAP}" = "none" ] && SMAP=""
 if [ "${SETUP}" = "none" ]; then
@@ -33,7 +36,7 @@ rm -f "${OUTFILE}.done" "${OUTFILE}.failed"
 cd "${_CONDOR_SCRATCH_DIR:-$(mktemp -d)}" || exit 1
 case "${MACRO}" in
   *_Sim.C)
-    ARGS="0, \"${LIST}\", \"${OUTFILE}\", \"${STEP}\", \"${KNEE}\", \"${SMAP}\", ${SEEDETA}" ;;
+    ARGS="0, \"${LIST}\", \"${OUTFILE}\", \"${STEP}\", \"${KNEE}\", \"${SMAP}\", ${SEEDETA}, \"MDC2\", 31, \"${CENTDIR}\"" ;;
   *)
     VETOB=false; [ "${VETO}" = 1 ] && VETOB=true
     REFITB=false; [ "${REFIT}" = 1 ] && REFITB=true

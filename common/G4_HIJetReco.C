@@ -80,7 +80,7 @@ namespace G4HIJETS
   std::string rho_sub_knee_tag = "JET_RHO_MBDQ_KNEE";
   std::string rho_sub_knee_path = "";
 
-  ///! SubtractTowers (both subtractions): scale the EMCal UE of a retowered tower by its live
+  ///! SubtractTowers and CopyAndSubtractJets (all chains): scale the EMCal UE of a retowered tower by its live
   ///! fraction (1 - dead, from RetowerCEMC), renormalized per eta ring, so a partly dead tower
   ///! no longer loses a full tower of UE; on by default (set false for the old behavior)
   bool ue_live_fraction = true;
@@ -148,6 +148,7 @@ void HIJetReco()
 
 
   CopyAndSubtractJets *casj = new CopyAndSubtractJets();
+  casj->set_ue_live_fraction(G4HIJETS::ue_live_fraction);
   casj->SetFlowModulation(G4HIJETS::do_flow);
   casj->Verbosity(verbosity); 
   casj->set_towerinfo(true);

@@ -68,8 +68,10 @@ void Fun4All_RhoUECalib_Sim(
     const float seed_abs_eta = -1,
     const std::string &cdbtag = "MDC2",
     const int run_number = 31,
-    // simulation centrality scales (MinimumBiasClassifier), as in the Run 2024 Au+Au HIJING production
-    const std::string &centrality_dir = "/sphenix/user/dlis/Projects/centrality/cdb/calibrations")
+    // simulation centrality scales of MinimumBiasClassifier: "" = CentralityScale / CentralityVertexScale
+    // of the CDB tag; else a directory with scales/cdb_centrality_scale_1.root and
+    // vertexscales/cdb_centrality_vertex_scale_1.root (MDC2 run 31 has no CDB scales; see the README)
+    const std::string &centrality_dir = "")
 {
   if (step != "knee" && step != "smap" && step != "ue")
   {
@@ -125,8 +127,11 @@ void Fun4All_RhoUECalib_Sim(
   // minimum bias with the simulation scales
   auto *mb = new MinimumBiasClassifier();
   mb->setIsSim(true);
-  mb->setOverwriteScale(centrality_dir + "/scales/cdb_centrality_scale_1.root");
-  mb->setOverwriteVtx(centrality_dir + "/vertexscales/cdb_centrality_vertex_scale_1.root");
+  if (!centrality_dir.empty())
+  {
+    mb->setOverwriteScale(centrality_dir + "/scales/cdb_centrality_scale_1.root");
+    mb->setOverwriteVtx(centrality_dir + "/vertexscales/cdb_centrality_vertex_scale_1.root");
+  }
   se->registerSubsystem(mb);
 
   // EMCal retowered onto the HCal grid (TOWERINFO_CALIB_CEMC_RETOWER)
