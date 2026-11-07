@@ -24,14 +24,13 @@ table, with a warning (a run off the dataset's typical scale, like 69671, then g
 Q', so every run should get its own knee). `HIJetReco.C` uses the CDB tag `HIJETS::rho_sub_knee_tag`
 when the payloads come from the CDB, and the payloads' tables when they come from file paths,
 unless `HIJETS::rho_sub_knee_path` is set. The knee must be fitted on the same MBD charge
-that the reconstruction uses (`MbdOut`, here with TTGain 1 as in production).
+that the reconstruction uses (`MbdOut`).
 Classes default to the cross-validated run 2024 Au+Au binning, 40 z x 26 Q'
 (`RhoUECalibBase::default_*_edges`).
 
 Code: `coresoftware/calibrations/jets/rho_ue_calib` (library `librhouecalib`):
 `MbdChargeHistMaker`, `TowerShapeMapMaker`, `RhoUECalibMaker` (SubsysReco, common event
-selection and classes in `RhoUECalibBase`), `RhoUECalibPayload` (knee fit, payload builders),
-`RhoUECalibEventVeto` (event veto, below) and `MbdTTGainOverride` (MBD time-channel gain).
+selection and classes in `RhoUECalibBase`) and `RhoUECalibPayload` (knee fit, payload builders).
 
 ## Input and event selection
 
@@ -43,27 +42,13 @@ calorimeter calibration with `Process_Calo_Calib()` and the EMCal retowered onto
 Selected events: Au+Au minimum bias with an MBD vertex in the class z range (|z| < 60 cm by
 default).
 
-Event veto (`RhoUECalibEventVeto`, macro argument `veto`, on by default), in front of the
-calibration modules, until the bunch-crossing and MBD charge-loss selection is done before
-DST_CALOFITTING:
-- vertex: an MBD vertex with |z| < 60 cm;
-- main bunch crossing ("smap" and "ue"): `MinimumBiasInfo::getBunchClass() == MAIN` when the
-  `MinimumBiasClassifier` ran with bunch classes (a `CentralityScale` payload with `t0offset`;
-  none for Run 2024), otherwise |t0 - t0(run)| < 2.5 ns with the run's main-bunch centre from
-  the knee table (column `t0`, found in the "knee" step from the t0 spectrum of every run);
-- off-band pile-up (MBD charge lost in the production fits): full charge (sum of the PMT
-  charges > 0) / `MbdOut` charge (PMTs with a time hit) > 1.3. This needs the MBD
-  reconstructed from the waveforms by the current `MbdReco` (`mbd_refit`, on by default: the
-  job also reads `DST_TRIGGERED_EVENT_seb18` of the same segments, the DST_CALOFITTING MBD
-  branches are switched off, `MbdTTGainOverride` sets TTGain 1 for the production timing).
-  Without the refit the two charges are equal and the cut does nothing (it is switched off).
-The module also serves DST skims: `set_require_minbias`, `set_accept_satellites` (the +-5 ns
-bunches when the classifier has bunch classes; in table mode widen `set_t0_window`), and
-`set_tag_bunch_class` writes t0' and the bunch class (MAIN / M5 / P5 / NONE,
-`set_bunch_class_windows(2.5, 7.5)`) into `MinimumBiasInfo` when the classifier left them unset.
+The bunch-crossing and MBD charge selection is the MBD reconstruction's (`MbdReco` on the
+DST_CALOFITTING fits, with the production MBD calibrations of the CDB tag): the calibration
+takes the events and the charge as the jet reconstruction sees them, with no selection of its
+own beyond minimum bias and the vertex range.
 
 `Fun4All_RhoUECalib_Sim.C` runs the same steps on minimum-bias HIJING DSTs (one DST or a
-list; CDB tag `MDC2`, run 31); no veto (the makers' vertex cut only). The minimum-bias selection
+list; CDB tag `MDC2`, run 31). The minimum-bias selection
 needs the simulation centrality scales; `MDC2` run 31 has no `CentralityScale` /
 `CentralityVertexScale` payload, so pass the directory of the scales of the Run 2024 Au+Au HIJING
 production (`centrality_dir`, condor variable `centdir=`), which holds
@@ -136,8 +121,7 @@ acceptance and the same tower calibration as the jet reconstruction.
 ## Notes
 
 - Knee table columns: `run knee knee_err sigma chi2ndf status events t0 t0_rms`. Runs whose knee
-  fit fails get knee -1; steps 2 and 3 abort on them (no knee), and on runs without a t0 when
-  the main-bunch veto is on.
+  fit fails get knee -1; steps 2 and 3 abort on them (no knee).
 - Knee payloads (`RhoUECalibPayload::MakeKneePayloads`): CDBTTree single values `mbdq_knee` (the
   knee in use), `mbdq_knee_fit`, `mbdq_knee_sigma`, `events`, `run`, `status`. Runs whose fit
   failed, with fewer than `min_events` (1e5) events or an edge width more than `max_sigma_dev`

@@ -7,8 +7,7 @@
 # Make the log directory first: mkdir -p <dir>/logs/<step> (condor does not create it).
 # Optional variables (defaults in the Arguments line): cdbtag=<tag>; setup=<script to source>
 # (e.g. a setup with a local build of rhouecalib / jetbackground); macro=Fun4All_RhoUECalib_Sim.C
-# for HIJING; veto=0 (no event veto); refit=0 (no MBD refit from seb18, off-band veto off);
-# seedeta=<|eta| max of the seed jets> (default "window" = the tower eta range shrunk by R; 5 = every jet);
+# for HIJING; seedeta=<|eta| max of the seed jets> (default "window" = the tower eta range shrunk by R; 5 = every jet);
 # zslist=<ZS cross-calibration list of make_zs_crosscalib_list.C> for runs without their own payload
 # (default: the run's own CDB payload, the calorimeter calibration aborts without it), or zslist=off.
 # centdir=<directory of the simulation centrality scales> for HIJING (default: the CDB tag's).
@@ -21,5 +20,5 @@ batch_name     = rhouecalib_$(step)
 Output         = $(outdir)/logs/$(step)/$(run)_$(seg).out
 Error          = $(outdir)/logs/$(step)/$(run)_$(seg).err
 Log            = /tmp/condorjob-$ENV(USER).log
-Arguments      = "$(step) $(list) $(outdir)/$(step)/$(step)_$(run)_$(seg).root $(cdbtag:newcdbtag) $(knee:none) $(smap:none) $(setup:none) $(macro_dir) $(macro:Fun4All_RhoUECalib.C) $(veto:1) $(refit:1) $(seedeta:window) $(zslist:none) $(centdir:none)"
+Arguments      = "$(step) $(list) $(outdir)/$(step)/$(step)_$(run)_$(seg).root $(cdbtag:newcdbtag) $(knee:none) $(smap:none) $(setup:none) $(macro_dir) $(macro:Fun4All_RhoUECalib.C) $(seedeta:window) $(zslist:none) $(centdir:none)"
 Queue run, seg, list from $(todo)

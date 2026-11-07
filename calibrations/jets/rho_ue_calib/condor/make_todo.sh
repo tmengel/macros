@@ -1,8 +1,8 @@
 #!/bin/bash
 # Job list of the rho UE calibration from the file catalog: the DST_CALOFITTING segments of
 # each run that also have the other DST types needed (DST_ZDC_RAW for the minimum-bias
-# classifier, DST_TRIGGERED_EVENT_seb18 for the MBD refit), one job per segment by default.
-#   make_todo.sh <tag> <runlist> <listdir> [segments per job, default 1] [other DST types, default "DST_ZDC_RAW DST_TRIGGERED_EVENT_seb18"]
+# classifier), one job per segment by default.
+#   make_todo.sh <tag> <runlist> <listdir> [segments per job, default 1] [other DST types, default "DST_ZDC_RAW"]
 #   e.g. make_todo.sh pro001_pcdb001_v001 runs.txt /path/to/lists
 # Writes <listdir>/<run>_<first segment>.list (DST_CALOFITTING names, resolved through the
 # file catalog by Fun4All) and <listdir>/todo.txt (lines "run segment list") for rhouecalib.job.
@@ -14,7 +14,7 @@ TAG=$1
 RUNLIST=$(readlink -f "$2")
 LISTDIR=$3
 NSEG=${4:-1}
-OTHER=${5:-"DST_ZDC_RAW DST_TRIGGERED_EVENT_seb18"}
+OTHER=${5:-"DST_ZDC_RAW"}
 mkdir -p "${LISTDIR}"
 LISTDIR=$(readlink -f "${LISTDIR}")
 rm -f "${LISTDIR}"/*.list "${LISTDIR}/todo.txt"

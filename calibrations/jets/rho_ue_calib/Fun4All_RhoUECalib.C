@@ -2,7 +2,7 @@
 #define FUN4ALL_RHOUECALIB_C
 
 // Rho UE calibration from DST_CALOFITTING (+ DST_ZDC_RAW of the same run and segment for
-// the minimum-bias classifier, + DST_TRIGGERED_EVENT_seb18 for the MBD refit). The input is
+// the minimum-bias classifier). The input is
 // one DST_CALOFITTING file or a ".list" of them (segments of one run: the CDB timestamp is the
 // run's). Three steps, run in order over the whole dataset; the output of each job is merged
 // with hadd and turned into the input of the next step with the make_*.C macros (see
@@ -11,8 +11,8 @@
 //   "smap"  TowerShapeMapMaker: tower shape map sums             -> make_tower_shape_payload.C
 //   "ue"    DetermineTowerRho x 3 (with the s-map if given) and
 //           RhoUECalibMaker: w / alpha / beta sums               -> make_rho_ue_payload.C
-// Events: Au+Au minimum bias with an MBD vertex inside the class range in z, and (veto)
-// not off-band and, for "smap" / "ue", in the main bunch crossing.
+// Events: Au+Au minimum bias with an MBD vertex inside the class range in z (the makers'
+// selection; the bunch-crossing and MBD charge selection is the MBD reconstruction's).
 //
 //   root -l -b -q 'Fun4All_RhoUECalib.C(0, "DST_CALOFITTING_run2auau_pro001_pcdb001_v001-00054912-00000.root", "knee_54912_0.root", "knee")'
 //   root -l -b -q 'Fun4All_RhoUECalib.C(0, "<file or list>", "smap_54912_0.root", "smap", "newcdbtag", "knee.txt")'
@@ -52,9 +52,7 @@
 #include <phool/recoConsts.h>
 
 #include <rhouecalib/MbdChargeHistMaker.h>
-#include <rhouecalib/MbdTTGainOverride.h>
 #include <rhouecalib/RhoUECalibBase.h>
-#include <rhouecalib/RhoUECalibEventVeto.h>
 #include <rhouecalib/RhoUECalibMaker.h>
 #include <rhouecalib/TowerShapeMapMaker.h>
 
@@ -93,12 +91,6 @@ void Fun4All_RhoUECalib(
     // tower shape map payload of make_tower_shape_payload.C ("ue"; "" = rho without the
     // s-map: the UE calibration must be made with the rho configuration it is applied with)
     const std::string &tower_shape_payload = "",
-    // event veto (RhoUECalibEventVeto): vertex |z| < 60 cm, off-band pile-up (needs
-    // mbd_refit) and, for "smap" / "ue", the main bunch (t0 of the knee table)
-    const bool veto = true,
-    // reconstruct the MBD from the waveforms of DST_TRIGGERED_EVENT_seb18 (same run and
-    // segments) with the current MbdReco, TTGain 1, instead of the DST_CALOFITTING fits
-    const bool mbd_refit = true,
     // seed jet acceptance of the per-layer rho ("ue"): < 0 = the tower eta range shrunk by R
     // (the DetermineTowerRho / HIJetReco.C default), else |eta_jet| < seed_abs_eta (5 = every jet)
     const float seed_abs_eta = -1,
@@ -157,47 +149,18 @@ void Fun4All_RhoUECalib(
   CDBInterface::instance()->Verbosity(0);
   se->registerSubsystem(new FlagHandler());
 
-  // DST_CALOFITTING, the ZDC raw DST and (refit) the MBD waveform DST of the same run and segments
+  // DST_CALOFITTING and the ZDC raw DST of the same run and segments
   auto *incalo = new Fun4AllDstInputManager("DSTINPUT_CALO");
   auto *inzdc = new Fun4AllDstInputManager("DSTINPUT_ZDC");
-  auto *inmbd = new Fun4AllDstInputManager("DSTINPUT_MBD");
-  if (mbd_refit)
-  {
-    // do not read the MBD fits of DST_CALOFITTING: MbdReco refits from the seb18 waveforms
-    incalo->BranchSelect("DST#MBD*", 0);
-  }
   for (const auto &file : calo_files)
   {
     std::string file_zdc = file;
     file_zdc.replace(file_zdc.find("CALOFITTING"), std::string("CALOFITTING").size(), "ZDC_RAW");
-    std::string file_mbd = file;
-    file_mbd.replace(file_mbd.find("CALOFITTING"), std::string("CALOFITTING").size(), "TRIGGERED_EVENT_seb18");
     incalo->AddFile(file);
     inzdc->AddFile(file_zdc);
-    inmbd->AddFile(file_mbd);
   }
   se->registerInputManager(incalo);
   se->registerInputManager(inzdc);
-  if (mbd_refit)
-  {
-    se->registerInputManager(inmbd);
-    // the production MBD fits of DST_CALOFITTING (MbdRawContainer) in their own top node: MbdReco
-    // there gives the production MbdOut charge for the off-band veto
-    auto *inprod = new Fun4AllDstInputManager("DSTINPUT_PRODMBD", "DST", "TOPPROD");
-    inprod->BranchSelect("*", 0);
-    inprod->BranchSelect("DST#Sync", 1);
-    inprod->BranchSelect("DST#EventHeader", 1);
-    inprod->BranchSelect("DST#MBD#MbdRawContainer", 1);
-    for (const auto &file : calo_files)
-    {
-      inprod->AddFile(file);
-    }
-    se->registerInputManager(inprod);
-  }
-  else
-  {
-    delete inmbd;
-  }
   auto *ingeom = new Fun4AllRunNodeInputManager("DST_GEO");
   ingeom->AddFile(CDBInterface::instance()->getUrl("calo_geo"));
   se->registerInputManager(ingeom);
@@ -205,20 +168,10 @@ void Fun4All_RhoUECalib(
   // MBD, ZDC, vertex, minimum-bias classifier
   se->registerSubsystem(new TriggerRunInfoReco());
   se->registerSubsystem(new MbdReco());
-  if (mbd_refit)
-  {
-    // no MBD_TTGAIN payload in the CDB: MbdCalib falls back to 0.95, the production timing needs 1
-    se->registerSubsystem(new MbdTTGainOverride(1.0));
-    // production MbdOut from the DST_CALOFITTING fits (top node TOPPROD) for the off-band veto
-    se->registerSubsystem(new MbdReco("MbdRecoProd"), "TOPPROD");
-    se->registerSubsystem(new MbdTTGainOverride(1.0, "MbdRecoProd", "MbdTTGainOverrideProd"), "TOPPROD");
-  }
   auto *caZDC = new CaloTowerBuilder("ZDCBUILDER");
   caZDC->set_detector_type(CaloTowerDefs::ZDC);
   caZDC->set_builder_type(CaloTowerDefs::kPRDFTowerv4);
   caZDC->set_processing_type(CaloWaveformProcessing::FAST);
-  caZDC->set_nsamples(16);
-  caZDC->set_offlineflag();
   se->registerSubsystem(caZDC);
   auto *zdc = new ZdcReco();
   zdc->set_zdc1_cut(0.0);
@@ -226,27 +179,6 @@ void Fun4All_RhoUECalib(
   se->registerSubsystem(zdc);
   se->registerSubsystem(new GlobalVertexReco());
   se->registerSubsystem(new MinimumBiasClassifier());
-
-  // event veto: vertex in the class range, off-band pile-up, main bunch (not in "knee": the
-  // main-bunch t0 of each run is determined there)
-  if (veto)
-  {
-    auto *ev = new RhoUECalibEventVeto();
-    ev->set_vertex_type(GlobalVertex::MBD);
-    ev->set_zvtx_max(RhoUECalibBase::default_zvtx_edges().back());
-    ev->set_offband_cut(mbd_refit ? 1.3 : 0);
-    ev->set_production_topnode("TOPPROD");
-    if (step != "knee")
-    {
-      ev->set_main_bunch(true);
-      ev->set_t0_table(knee_table);
-    }
-    se->registerSubsystem(ev);
-    if (!mbd_refit)
-    {
-      std::cout << "Fun4All_RhoUECalib: no MBD refit, the off-band veto is off" << std::endl;
-    }
-  }
 
   // calorimeters ("smap", "ue"; the knee needs only the MBD): calibrated towers and the
   // EMCal retowered onto the HCal grid (TOWERINFO_CALIB_CEMC_RETOWER)
