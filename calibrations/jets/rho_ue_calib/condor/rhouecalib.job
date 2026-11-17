@@ -11,6 +11,8 @@
 # zslist=<ZS cross-calibration list of make_zs_crosscalib_list.C> for runs without their own payload
 # (default: the run's own CDB payload, the calorimeter calibration aborts without it), or zslist=off.
 # centdir=<directory of the simulation centrality scales> for HIJING (default: the CDB tag's).
+# towers=<tower node prefix> and mbclass=0 (HIJING macro only): e.g. towers=TOWERINFO_CALIB_HIJ mbclass=0 for the
+# HIJING-only towers of an embedding DST that carries MinimumBiasInfo but no MBD PMTs.
 # Paths must be absolute. Without smap= the "ue" step makes the calibration for rho without the s-map.
 macro_dir      = $ENV(PWD)/..
 Universe       = vanilla
@@ -20,5 +22,5 @@ batch_name     = rhouecalib_$(step)
 Output         = $(outdir)/logs/$(step)/$(run)_$(seg).out
 Error          = $(outdir)/logs/$(step)/$(run)_$(seg).err
 Log            = /tmp/condorjob-$ENV(USER).log
-Arguments      = "$(step) $(list) $(outdir)/$(step)/$(step)_$(run)_$(seg).root $(cdbtag:newcdbtag) $(knee:none) $(smap:none) $(setup:none) $(macro_dir) $(macro:Fun4All_RhoUECalib.C) $(seedeta:window) $(zslist:none) $(centdir:none)"
+Arguments      = "$(step) $(list) $(outdir)/$(step)/$(step)_$(run)_$(seg).root $(cdbtag:newcdbtag) $(knee:none) $(smap:none) $(setup:none) $(macro_dir) $(macro:Fun4All_RhoUECalib.C) $(seedeta:window) $(zslist:none) $(centdir:none) $(towers:TOWERINFO_CALIB) $(mbclass:1)"
 Queue run, seg, list from $(todo)

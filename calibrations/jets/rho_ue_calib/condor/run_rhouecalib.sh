@@ -1,6 +1,6 @@
 #!/bin/bash
 # One rho UE calibration job (see rhouecalib.job):
-#   run_rhouecalib.sh <step> <input list> <output file> <cdb tag> <knee table> <s-map payload> <setup> <macro dir> <macro> <seed |eta|> <ZS list> <centrality dir>
+#   run_rhouecalib.sh <step> <input list> <output file> <cdb tag> <knee table> <s-map payload> <setup> <macro dir> <macro> <seed |eta|> <ZS list> <centrality dir> <tower prefix> <MB classifier 1|0>
 # "none" = not set, "window" = the default seed acceptance (-1). <setup>: script to source for the environment (default: the "new" build).
 # <macro>: Fun4All_RhoUECalib.C (data) or Fun4All_RhoUECalib_Sim.C (HIJING; cdb tag unused;
 # <centrality dir>: the simulation centrality scales, "none" = from the CDB). A marker
@@ -19,6 +19,8 @@ SEEDETA=${10:-window}
 ZSLIST=${11:-none}
 [ "${ZSLIST}" = "none" ] && ZSLIST=""
 CENTDIR=${12:-none}
+TOWERS=${13:-TOWERINFO_CALIB}
+MBCLASS=true; [ "${14:-1}" = 0 ] && MBCLASS=false
 [ "${CENTDIR}" = "none" ] && CENTDIR=""
 [ "${KNEE}" = "none" ] && KNEE=""
 [ "${SMAP}" = "none" ] && SMAP=""
@@ -34,7 +36,7 @@ rm -f "${OUTFILE}.done" "${OUTFILE}.failed"
 cd "${_CONDOR_SCRATCH_DIR:-$(mktemp -d)}" || exit 1
 case "${MACRO}" in
   *_Sim.C)
-    ARGS="0, \"${LIST}\", \"${OUTFILE}\", \"${STEP}\", \"${KNEE}\", \"${SMAP}\", ${SEEDETA}, \"MDC2\", 31, \"${CENTDIR}\"" ;;
+    ARGS="0, \"${LIST}\", \"${OUTFILE}\", \"${STEP}\", \"${KNEE}\", \"${SMAP}\", ${SEEDETA}, \"MDC2\", 31, \"${CENTDIR}\", \"${TOWERS}\", ${MBCLASS}" ;;
   *)
     ARGS="0, \"${LIST}\", \"${OUTFILE}\", \"${STEP}\", \"${CDBTAG}\", \"${KNEE}\", \"${SMAP}\", ${SEEDETA}, \"${ZSLIST}\"" ;;
 esac

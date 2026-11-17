@@ -71,7 +71,12 @@ void Fun4All_RhoUECalib_Sim(
     // simulation centrality scales of MinimumBiasClassifier: "" = CentralityScale / CentralityVertexScale
     // of the CDB tag; else a directory with scales/cdb_centrality_scale_1.root and
     // vertexscales/cdb_centrality_vertex_scale_1.root (MDC2 run 31 has no CDB scales; see the README)
-    const std::string &centrality_dir = "")
+    const std::string &centrality_dir = "",
+    // tower node prefix: "TOWERINFO_CALIB", or e.g. "TOWERINFO_CALIB_HIJ" for the HIJING-only towers
+    // of an embedding production (the payload must be made from the towers it will subtract)
+    const std::string &tower_prefix = "TOWERINFO_CALIB",
+    // run the MinimumBiasClassifier (needs MbdPmtContainer); false: use the MinimumBiasInfo of the DST
+    const bool mb_classifier = true)
 {
   if (step != "knee" && step != "smap" && step != "ue")
   {
@@ -125,23 +130,26 @@ void Fun4All_RhoUECalib_Sim(
   se->registerInputManager(ingeom);
 
   // minimum bias with the simulation scales
-  auto *mb = new MinimumBiasClassifier();
-  mb->setIsSim(true);
-  if (!centrality_dir.empty())
+  if (mb_classifier)
   {
-    mb->setOverwriteScale(centrality_dir + "/scales/cdb_centrality_scale_1.root");
-    mb->setOverwriteVtx(centrality_dir + "/vertexscales/cdb_centrality_vertex_scale_1.root");
+    auto *mb = new MinimumBiasClassifier();
+    mb->setIsSim(true);
+    if (!centrality_dir.empty())
+    {
+      mb->setOverwriteScale(centrality_dir + "/scales/cdb_centrality_scale_1.root");
+      mb->setOverwriteVtx(centrality_dir + "/vertexscales/cdb_centrality_vertex_scale_1.root");
+    }
+    se->registerSubsystem(mb);
   }
-  se->registerSubsystem(mb);
 
-  // EMCal retowered onto the HCal grid (TOWERINFO_CALIB_CEMC_RETOWER)
+  // EMCal retowered onto the HCal grid (<tower_prefix>_CEMC_RETOWER)
   if (step != "knee")
   {
     auto *rcemc = new RetowerCEMC();
     rcemc->set_towerinfo(true);
     rcemc->set_frac_cut(1.0);
     rcemc->set_do_rescale(false);
-    rcemc->set_towerNodePrefix("TOWERINFO_CALIB");
+    rcemc->set_towerNodePrefix(tower_prefix);
     se->registerSubsystem(rcemc);
   }
 
@@ -165,7 +173,7 @@ void Fun4All_RhoUECalib_Sim(
     {
       auto *rho = new DetermineTowerRho("DetermineTowerRho_" + layer);
       rho->add_method(TowerRho::Method::MULT, "TowerRho_" + layer + "_MULT");
-      auto *tin = new TowerJetInput(src, "TOWERINFO_CALIB");
+      auto *tin = new TowerJetInput(src, tower_prefix);
       tin->set_GlobalVertexType(GlobalVertex::MBD);
       rho->add_input(tin);
       if (seed_abs_eta >= 0)
@@ -182,6 +190,7 @@ void Fun4All_RhoUECalib_Sim(
     maker = new RhoUECalibMaker(outfile);
   }
   maker->set_vertex_type(GlobalVertex::MBD);
+  maker->set_tower_prefix(tower_prefix);
   if (!knee_table.empty())
   {
     maker->set_knee_table(knee_table);
